@@ -2372,7 +2372,7 @@ class Catalog_seed():
             if os.path.isfile(self.params['Reffiles']['distortion_coeffs']):
                 distortionTable = ascii.read(self.params['Reffiles']['distortion_coeffs'],header_start=1)
             else:
-                print("WARNING: Input distortion coefficients file {} does not exist.".format(self.params['Reffile']['distortion_coeffs']))
+                print("WARNING: Input distortion coefficients file {} does not exist.".format(self.params['Reffiles']['distortion_coeffs']))
                 sys.exit()
 
             #read in coefficients for the forward 'science' to 'ideal' coordinate transformation.

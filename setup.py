@@ -13,7 +13,7 @@ setup(
     author_email='hilbert@stsci.edu',
     keywords = ['astronomy'],
     classifiers = ['Programming Language :: Python'],
-    packages = find_packages(),
+    packages = find_packages(exclude=["catalogs","examples"]),
     install_requires = [],
     include_package_data = True
     )
