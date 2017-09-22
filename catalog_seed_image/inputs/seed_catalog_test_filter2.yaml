@@ -21,7 +21,7 @@ Reffiles:                                 #Set to None or leave blank if you wis
   linearized_darkfile: /ifs/jwst/wit/nircam/isim_cv3_files_for_calibrations/linearized_darks/BLONG/Linearized_Dark_and_SBRefpix_NRCNRCBLONG-DARK-53560612211_1_490_SE_2015-12-22T07h44m25_uncal.fits   # Linearized dark ramp to use as input. Supercedes dark above
   hotpixmask: None                        #Hot pixel mask to go with the dark integration. If none, the script will find hot pixels. Fits file. Ones are hot. Zeros not.
   superbias: /ifs/jwst/wit/witserv/data4/nrc/hilbert/superbias/cv3/deliver_to_CRDS/NRCB5_superbias_from_list_of_biasfiles.list.fits     #Superbias file. Set to None or leave blank if not using
-  subarray_defs: ../config/NIRCam_subarray_definitions.list         #File that contains a list of all possible subarray names and coordinates
+  subarray_defs: config        #File that contains a list of all possible subarray names and coordinates
   readpattdefs: nircam_read_pattern_definitions.list           #File that contains a list of all possible readout pattern names and associated NFRAME/NSKIP values
   linearity: /ifs/jwst/wit/witserv/data7/nrc/reference_files/SSB/CV3/cv3_reffile_conversion/linearity/NRCBLONG_17161_LinearityCoeff_ADU0_2016-05-22_ssblinearity_v2_DMSorient.fits    #linearity correction coefficients
   saturation: /ifs/jwst/wit/witserv/data7/nrc/reference_files/SSB/CV3/cv3_reffile_conversion/welldepth/NRCB5_17161_WellDepthADU_2016-03-10_ssbsaturation_wfact_DMSorient.fits    #well depth reference files
@@ -36,7 +36,7 @@ Reffiles:                                 #Set to None or leave blank if you wis
   occult: None                                    #Occulting spots correction image
   filtpupilcombo: nircam_filter_pupil_pairings.list       #File that lists the filter wheel element / pupil wheel element combinations. Used only in writing output file
   pixelAreaMap: /ifs/jwst/wit/witserv/data4/nrc/hilbert/simulated_data/jwst_nircam_area_0001.fits      #Pixel area map for the detector. Used to introduce distortion into the output ramp.
-  flux_cal: ../config/NIRCam_zeropoints.list  #File that lists flux conversion factor and pivot wavelength for each filter. Only used when making direct image outputs to be fed into the grism disperser code.
+  flux_cal: config  #File that lists flux conversion factor and pivot wavelength for each filter. Only used when making direct image outputs to be fed into the grism disperser code.
 nonlin:
   limit: 60000.0                           #Upper singal limit to which nonlinearity is applied (ADU)
   accuracy: 0.000001                        #Non-linearity accuracy threshold
