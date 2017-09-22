@@ -35,11 +35,11 @@ allowedOutputFormats = ['DMS']
 
 
 
-class Catalog_seed():#RampSim):
+class Catalog_seed():
     def __init__(self):
         # Locate the module files, so that we know where to look
         # for config subdirectory
-        modpath = imp.find_module('catalog_seed_image')[1]
+        self.modpath = imp.find_module('catalog_seed_image')[1]
 
         #if a grism signal rate image is requested, expand
         #the width and height of the signal rate image by this 

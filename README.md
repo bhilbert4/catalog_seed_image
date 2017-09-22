@@ -101,7 +101,7 @@ python catalog_seed_image.py myfile.yaml
 
 2) Within python:
 
-from catalog_seed_image.catalog_seed_image import catalog_seed_image as csi
+from catalog_seed_image.scripts import catalog_seed_image as csi
 
 cat = csi.Catalog_seed()
 
