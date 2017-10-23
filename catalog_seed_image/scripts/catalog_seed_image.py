@@ -10,21 +10,21 @@ cosmic rays.
 
 import argparse, sys, glob, os
 import imp
-import yaml
 import scipy.signal as s1
 import numpy as np
 import math
 from astropy.io import fits, ascii
 from astropy.table import Table
 from astropy.modeling.models import Sersic2D
-import rotations  #this is Colin's set of rotation functions
-from asdf import AsdfFile
-import polynomial #more of Colin's functions
 from astropy.convolution import convolve
-import read_siaf_table
-import set_telescope_pointing_separated as set_telescope_pointing
-import moving_targets
-import segmentation_map as segmap
+from asdf import AsdfFile
+import yaml
+from . import rotations  #this is Colin's set of rotation functions
+from . import polynomial #more of Colin's functions
+from . import read_siaf_table
+from . import set_telescope_pointing_separated as set_telescope_pointing
+from . import moving_targets
+from . import segmentation_map as segmap
 
 inst_list = ['nircam']
 modes = {'nircam':['imaging','moving_target','wfss','coron']}
@@ -61,7 +61,7 @@ class Catalog_seed():
         self.grism_background = 0.25 #e-/sec
 
         
-    def run(self):
+    def make_seed(self):
         # Read in input parameters and quality check
         self.readParameterFile()
         self.fullPaths()
@@ -117,9 +117,11 @@ class Catalog_seed():
             else:
                 self.seedimage = self.combineSimulatedDataSources('ramp',self.seedimage,trailed_ramp)
                 
-        #save the combined static+moving targets ramp
+        # Save the combined static+moving targets ramp
         self.saveSeedImage()
 
+        # Return info in a tuple
+        return (self.seedimage, self.seed_segmap, self.seedinfo)
 
     def saveSeedImage(self):
         #Create the grism direct image or ramp to be saved 
@@ -146,7 +148,7 @@ class Catalog_seed():
         elif len(arrayshape) == 3:
             units = 'e-'
             g,yd,xd = arrayshape
-            tgroup = self.frametime*(self.params['Readout']['nframe']+self.params['Readout']['nskip'])
+            tgroup = self.frametime * (self.params['Readout']['nframe'] + self.params['Readout']['nskip'])
             
         seedName = os.path.join(self.basename + '_' + self.params['Readout']['filter'] + '_seed_image.fits')
         xcent_fov = xd / 2
@@ -187,7 +189,8 @@ class Catalog_seed():
                     'Output':['file','directory']}
 
         config_files = {'Reffiles-subarray_defs':'NIRCam_subarray_definitions.list',
-                        'Reffiles-flux_cal':'NIRCam_zeropoints.list'}
+                        'Reffiles-flux_cal':'NIRCam_zeropoints.list',
+                        'Reffiles-crosstalk':'xtalk20150303g0.errorcut.txt'}
         
         for key1 in pathdict:
             for key2 in pathdict[key1]:
@@ -294,8 +297,14 @@ class Catalog_seed():
         #based on the size of the croped dark current integration
         #numint,numgrp,yd,xd = self.dark.data.shape
         yd,xd = self.nominal_dims
-        self.frametime = (xd/self.params['Readout']['namp'] + 12.) * (yd+1) * 10.00 * 1.e-6
-        
+        #self.frametime = (xd/self.params['Readout']['namp'] + 12.) * (yd+1) * 10.00 * 1.e-6
+        #UPDATED VERSION, 16 Sept 2017
+        colpad = 12
+        rowpad = 2
+        if ((xd <= 8) & (yd <= 8)):
+            rowpad = 3
+        self.frametime = ((1.0 * xd/self.params['Readout']['namp'] + colpad) * (yd+rowpad)) * 1.e-5
+
 
     def calcCoordAdjust(self):
         # Calculate the factors by which to expand the output array size, as well as the coordinate
@@ -982,10 +991,10 @@ class Catalog_seed():
             indexes = np.arange(len(lines['x_or_RA']))
             
         dtor = math.radians(1.)
-        nx = (self.subarray_bounds[2]-self.subarray_bounds[0])+1
-        ny = (self.subarray_bounds[3]-self.subarray_bounds[1])+1
-        xc = (self.subarray_bounds[2]+self.subarray_bounds[0])/2.
-        yc = (self.subarray_bounds[3]+self.subarray_bounds[1])/2.
+        nx = (self.subarray_bounds[2] - self.subarray_bounds[0]) + 1
+        ny = (self.subarray_bounds[3] - self.subarray_bounds[1]) + 1
+        xc = (self.subarray_bounds[2] + self.subarray_bounds[0]) / 2.
+        yc = (self.subarray_bounds[3] + self.subarray_bounds[1]) / 2.
 
         #Location of the subarray's reference pixel. 
         xrefpix = self.refpix_pos['x']
@@ -1197,8 +1206,8 @@ class Catalog_seed():
             #This depends on the sub-pixel offsets above
             interval = self.params['simSignals']['psfpixfrac']
             numperpix = int(1./interval)
-            a = interval * int(numperpix*xfract + 0.5) - 0.5
-            b = interval * int(numperpix*yfract + 0.5) - 0.5
+            a = round(interval * int(numperpix*xfract + 0.5) - 0.5,1)
+            b = round(interval * int(numperpix*yfract + 0.5) - 0.5,1)
 
             if a < 0:
                 astr = str(a)[0:4]
@@ -1825,8 +1834,8 @@ class Catalog_seed():
 
             #print('requested radius: {}  stamp size: {}'.format(entry['radius'],galdims))
 
-            nyshift = galdims[0] / 2
-            nxshift = galdims[1] / 2
+            nyshift = int(galdims[0] / 2)
+            nxshift = int(galdims[1] / 2)
 
             nx = int(entry['pixelx']+deltax)
             ny = int(entry['pixely']+deltay)
@@ -2558,7 +2567,7 @@ class Catalog_seed():
     def saveSingleFits(self,image,name,key_dict=None,image2=None,image2type=None):
         #save an array into the first extension of a fits file
         h0 = fits.PrimaryHDU()
-        h1 = fits.ImageHDU(image)
+        h1 = fits.ImageHDU(image,name='DATA')
         if image2 is not None:
             h2 = fits.ImageHDU(image2)
             if image2type is not None:
