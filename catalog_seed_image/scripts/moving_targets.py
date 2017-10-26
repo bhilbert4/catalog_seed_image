@@ -152,7 +152,7 @@ class MovingTarget():
         #    outputframe[0,outymin:outymax,outxmin,outxmax] += substamp[stampymin:stampymax,stampxmin,stampxmax]
 
         
-        for i in xrange(1,numframes+1):
+        for i in range(1,numframes+1):
             #for frames after the 0th, start with the previous frame
             #if i != 0:
                 #outputframe[i-1,:,:] = np.copy(outputframe[i-2,:,:])
@@ -277,6 +277,9 @@ class MovingTarget():
             #print(mnx,mxx,mny,mxy)
             #check for sources that fall off the edges of the output array
             #print(mny,mxy,mnx,mxx)
+
+            #print(outputframe1.shape)
+            #print(self.subsampx,self.subsampy)
             outfull[i-1,mny:mxy+1,mnx:mxx+1] = self.resample(outputframe1,self.subsampx,self.subsampy)
         
         #h0 = fits.PrimaryHDU()
@@ -292,20 +295,19 @@ class MovingTarget():
     def resample(self,frame,sampx,sampy):
         #return subsampled image back to original resolution
         framey,framex = frame.shape
-        newframe = np.zeros((framey/sampy,framex/sampx))
+        newframe = np.zeros((np.int(framey/sampy),np.int(framex/sampx)))
         newframey,newframex = newframe.shape
 
-        for j in xrange(newframey):
-            for i in xrange(newframex):
+        for j in range(newframey):
+            for i in range(newframex):
                 newframe[j,i] = np.sum(frame[sampy*j:sampy*(j+1),sampx*i:sampx*(i+1)])
         return newframe
         
 
-
     def coordCheck(self,center,len_stamp,len_out):
-        #center = xframessub[0]
-        #len_stamp = substamplen
-        #len_out  = outsubshape
+        # Find indexes of stamp and frame to use
+        # given that the stamp may fall off the edge
+        # of the frame
         outxmin = center - len_stamp/2
         outxmax = outxmin + len_stamp
         stampxmin = 0
@@ -341,13 +343,44 @@ class MovingTarget():
                 outxmin = np.nan
                 stampxmin = np.nan
 
-        #print('after checks!!!',outxmin,outxmax,stampxmin,stampxmax)
-        try:
-            return np.int(outxmin),np.int(outxmax),np.int(stampxmin),np.int(stampxmax)
-        except:
+        #print('center,len',center,len_stamp)
+        #print('after edge checks!!!',outxmin,outxmax,stampxmin,stampxmax)
+
+                
+        indexes = [outxmin,outxmax,stampxmin,stampxmax]
+        if np.all(np.isfinite(indexes)):
+            ioutxmin = np.int(outxmin)
+            ioutxmax = np.int(outxmax)
+            istampxmin = np.int(stampxmin)
+            istampxmax = np.int(stampxmax)
+            dout = ioutxmax - ioutxmin
+            dstamp = istampxmax - istampxmin
+            #print('before fix!!!',ioutxmin,ioutxmax,istampxmin,istampxmax)
+            #print(dout,dstamp)
+
+            if dout == dstamp:
+                pass
+            elif dout == (dstamp+1):
+                if istampxmin > 0:
+                    istampxmin -= 1
+                else:
+                    istampxmax += 1
+            elif dstamp == (dout+1):
+                if ioutxmin > 0:
+                    ioutxmin -= 1
+                else:
+                    ioutxmax += 1
+            else:
+                print("WARNING: bad stamp/output match. Quitting.")
+                sys.exit()
+
+            #print('center,len',center,len_stamp)
+            #print('after fix!!!',ioutxmin,ioutxmax,istampxmin,istampxmax)
+            #print(ioutxmax-ioutxmin,istampxmax-istampxmin)   
+            return ioutxmin,ioutxmax,istampxmin,istampxmax
+        else:
             # if values are NaN then we can't change them to integers
             return outxmin,outxmax,stampxmin,stampxmax
-
 
 
     def inputMotion(self,inframe,source,xbounds,ybounds,xs,ys,secperpix):
@@ -368,11 +401,12 @@ class MovingTarget():
         #print('xlist',xlist)
         #print('ylist',ylist)
 
-        for i in xrange(1,len(xlist)):
+        for i in range(1,len(xlist)):
             #print('Working on location {},{}'.format(xlist[i],ylist[i]))
             outxmin,outxmax,stampxmin,stampxmax = self.coordCheck(xlist[i],srcxlen,framexlen)
             outymin,outymax,stampymin,stampymax = self.coordCheck(ylist[i],srcylen,frameylen)
-            #print(outxmin,outxmax,stampxmin,stampxmax,srcxlen,framexlen)
+            #print('x',outxmin,outxmax,stampxmin,stampxmax,srcxlen,frameylen)
+            #print('y',outymin,outymax,stampymin,stampymax,srcylen,frameylen)
 
             outcoords = np.array([outxmin,outxmax,outymin,outymax])
 
@@ -386,6 +420,9 @@ class MovingTarget():
                 #print('y-coords',outymin,outymax,stampymin,stampymax)
                 #inframe[ylist[i]-np.ceil(srcylen/2.):ylist[i]+np.ceil(srcylen/2.),xlist[i]-np.ceil(srcxlen/2.):xlist[i]+np.ceil(srcxlen/2.)] += (source*secperpix*dist)
 
+                #print('inframe shape',inframe[outymin:outymax,outxmin:outxmax].shape)
+                #print('source shape',source[stampymin:stampymax,stampxmin:stampxmax].shape)
+                
                 inframe[outymin:outymax,outxmin:outxmax] += (source[stampymin:stampymax,stampxmin:stampxmax]*secperpix*dist)
         return inframe
 
@@ -395,8 +432,8 @@ class MovingTarget():
         ydim,xdim = image.shape
         substamp = np.zeros((ydim*factory,xdim*factorx))
         
-        for i in xrange(xdim):
-            for j in xrange(ydim):
+        for i in range(xdim):
+            for j in range(ydim):
                 #substamp[j*factory:j*(factory+1),i*factorx:i*(factorx+1)] = image[j,i]
                 substamp[factory*j:factory*(j+1),factorx*i:factorx*(i+1)] = image[j,i]
 

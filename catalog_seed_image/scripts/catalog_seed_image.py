@@ -51,7 +51,7 @@ class Catalog_seed():
         #self.coord_adjust contains the factor by which the nominal output array size
         #needs to be increased (used for TSO and WFSS modes), as well as the coordinate
         #offset between the nominal output array coordinates, and those of the expanded 
-        #array. These are needed mostly for TSO observations, where the nominal output  
+        #array. These are needed mostly for WFSS observations, where the nominal output  
         #array will not sit centered in the expanded output image.
         self.coord_adjust = {'x':1.,'xoffset':0.,'y':1.,'yoffset':0.}
 
@@ -97,7 +97,7 @@ class Catalog_seed():
         if self.params['Inst']['mode'].lower() == 'moving_target':
             print('Creating signal ramp of synthetic inputs')
             print("need to adjust moving target work for multiple integrations! everything above has been modified")
-            self.seedimage = self.non_sidereal_seed()
+            self.seedimage, self.seed_segmap = self.non_sidereal_seed()
             outapp = '_nonsidereal_target'
 
         #if moving targets are requested (KBOs, asteroids, etc, NOT moving_target mode
@@ -123,6 +123,7 @@ class Catalog_seed():
         # Return info in a tuple
         return (self.seedimage, self.seed_segmap, self.seedinfo)
 
+    
     def saveSeedImage(self):
         #Create the grism direct image or ramp to be saved 
 
@@ -166,6 +167,13 @@ class Catalog_seed():
         kw['PHOTFLAM'] = self.photflam
         kw['PHOTFNU'] = self.photfnu
         kw['PHOTPLAM'] = self.pivot * 1.e4 #put into angstroms
+        kw['NOMXDIM'] = self.nominal_dims[0]
+        kw['NOMYDIM'] = self.nominal_dims[1]
+        kw['NOMXSTRT'] = self.coord_adjust['xoffset'] + 1
+        kw['NOMXEND'] = self.nominal_dims[0] + self.coord_adjust['xoffset'] 
+        kw['NOMYSTRT'] = self.coord_adjust['yoffset'] + 1
+        kw['NOMYEND'] = self.nominal_dims[1] + self.coord_adjust['yoffset'] 
+        kw['GRISMPAD'] = self.grism_direct_factor
         self.seedinfo = kw
         self.saveSingleFits(self.seedimage,seedName,key_dict=kw,image2=self.seed_segmap,image2type='SEGMAP')
         print("Seed image and segmentation map saved as {}".format(seedName))
@@ -235,7 +243,7 @@ class Catalog_seed():
             num_frames = self.params['Readout']['ngroup'] * (self.params['Readout']['nframe'] + self.params['Readout']['nskip'])
             print("Countrate image of synthetic signals being converted to RAPID integration with {} frames.".format(num_frames))
             input1_ramp = np.zeros((num_frames,yd,xd))
-            for i in xrange(num_frames):
+            for i in range(num_frames):
                 input1_ramp[i,:,:] = input1 * self.frametime * (i+1)
 
         else:
@@ -287,7 +295,7 @@ class Catalog_seed():
             #Combine the ramps of the moving targets if there is more than one type
             mov_targs_integration = mov_targs_ramps[0]
             if len(mov_targs_ramps) > 1:
-                for i in xrange(1,len(mov_targs_ramps)):
+                for i in range(1,len(mov_targs_ramps)):
                     mov_targs_integration += mov_targs_ramps[0]
         return mov_targs_integration
 
@@ -328,14 +336,14 @@ class Catalog_seed():
         
         # Create a count rate image containing only the non-sidereal target(s)
         # These will be stationary in the fov 
-        nonsidereal_countrate,self.ra_vel,self.dec_vel,vel_flag = self.nonsidereal_CRImage(self.params['simSignals']['movingTargetToTrack'])
+        nonsidereal_countrate,nonsidereal_segmap,self.ra_vel,self.dec_vel,vel_flag = self.nonsidereal_CRImage(self.params['simSignals']['movingTargetToTrack'])
 
         # Expand into a RAPID ramp and convert from signal rate to signals
         ns_yd,ns_xd = nonsidereal_countrate.shape
         totframes = self.params['Readout']['ngroup'] * (self.params['Readout']['nframe']+self.params['Readout']['nskip'])
         tmptimes = self.frametime * np.arange(1,totframes+1)
         non_sidereal_ramp = np.zeros((totframes,ns_yd,ns_xd))
-        for i in xrange(totframes):
+        for i in range(totframes):
             non_sidereal_ramp[i,:,:] = nonsidereal_countrate * tmptimes[i]
         #non_sidereal_zero = non_sidereal_ramp[0,:,:]
 
@@ -367,11 +375,10 @@ class Catalog_seed():
         # Add in the other objects which are not being tracked on 
         # (i.e. the sidereal targets)
         if len(mtt_data_list) > 0:
-            for i in xrange(len(mtt_data_list)):
+            for i in range(len(mtt_data_list)):
                 non_sidereal_ramp += mtt_data_list[i]
                 #non_sidereal_zero += mtt_zero_list[i]
-
-        return non_sidereal_ramp#, non_sidereal_zero
+        return non_sidereal_ramp, nonsidereal_segmap
 
     
     def readMTFile(self,file):
@@ -528,7 +535,6 @@ class Catalog_seed():
                 #convolve the galaxy with the NIRCam PSF
                 stamp = s1.fftconvolve(stamp,self.centerpsf,mode='same')
 
-
             #normalize the PSF to a total signal of 1.0
             totalsignal = np.sum(stamp)
             stamp /= totalsignal
@@ -601,32 +607,23 @@ class Catalog_seed():
 
     
     def nonsidereal_CRImage(self,file):
-        #create countrate image of non-sidereal sources that are being tracked.
-
-        #get countrate for mag 15 source, for scaling later
-        #try:
-        #    if self.params['Readout']['pupil'][0].upper() == 'F':
-        #        usephot = 'pupil'
-        #    else:
-        #        usephot = 'filter'
-        #    mag15rate = self.countvalues[self.params['Readout'][usephot]]
-        #except:
-        #    print("Unable to find mag 15 countrate for {} filter in {}.".format(self.params['Readout'][usephot],self.params['Reffiles']['phot']))
-        #    sys.exit()
-
-
+        # Create countrate image of non-sidereal sources
+        # that are being tracked.
         totalCRList = []
-
-        #read in file containing targets
-        targs,pixFlag,velFlag = self.readMTFile(self.params['simSignals']['movingTargetToTrack'])
+        totalSegList = []
         
-        #We need to keep track of the proper motion of the target being tracked, because
-        #all other objects in the field of view will be moving at the same rate in the 
-        #opposite direction
+        # Read in file containing targets
+        targs,pixFlag,velFlag,magsys = self.readMTFile(self.params['simSignals']['movingTargetToTrack'])
+        
+        # We need to keep track of the proper motion of the
+        # target being tracked, because all other objects in
+        # the field of view will be moving at the same rate
+        # in the opposite direction
         track_ra_vel = targs[0]['x_or_RA_velocity']
         track_dec_vel = targs[0]['y_or_Dec_velocity']
 
-        #sort the targets by whether they are point sources, galaxies, extended
+        # Sort the targets by whether they are point sources,
+        # galaxies, extended
         ptsrc_rows = []
         galaxy_rows = []
         extended_rows = []
@@ -638,7 +635,7 @@ class Catalog_seed():
             else:
                 extended_rows.append(i)
 
-        #then re-use functions for the sidereal tracking situation
+        # Re-use functions for the sidereal tracking situation
         if len(ptsrc_rows) > 0:
             ptsrc = targs[ptsrc_rows]
             if pixFlag:
@@ -649,15 +646,17 @@ class Catalog_seed():
                 meta1 = 'velocity_pixel'
             else:
                 meta1 = ''
-            meta2 = 'Point sources with non-sidereal tracking. File produced by ramp_simulator.py'
-            meta3 = 'from run using non-sidereal moving target list {}.'.format(self.params['simSignals']['movingTargetToTrack'])
-            ptsrc.meta['comments'] = [meta0,meta1,meta2,meta3]
+            meta2 = magsys
+            meta3 = 'Point sources with non-sidereal tracking. File produced by ramp_simulator.py'
+            meta4 = 'from run using non-sidereal moving target list {}.'.format(self.params['simSignals']['movingTargetToTrack'])
+            ptsrc.meta['comments'] = [meta0,meta1,meta2,meta3,meta4]
             ptsrc.write(os.path.join(self.params['Output']['directory'],'temp_non_sidereal_point_sources.list'),format='ascii',overwrite=True)
-
+            
             ptsrc = self.getPointSourceList('temp_non_sidereal_point_sources.list')
-            ptsrcCRImage = self.makePointSourceImage(ptsrc)
+            ptsrcCRImage, ptsrcCRSegmap = self.makePointSourceImage(ptsrc)
             totalCRList.append(ptsrcCRImage)
-
+            totalSegList.append(ptsrcCRSegmap)
+            
         if len(galaxy_rows) > 0:
             galaxies = targs[galaxy_rows]
             if pixFlag:
@@ -668,9 +667,10 @@ class Catalog_seed():
                 meta1 = 'velocity_pixel'
             else:
                 meta1 = ''
-            meta2 = 'Galaxies (2d sersic profiles) with non-sidereal tracking. File produced by ramp_simulator.py'
-            meta3 = 'from run using non-sidereal moving target list {}.'.format(self.params['simSignals']['movingTargetToTrack'])
-            galaxies.meta['comments'] = [meta0,meta1,meta2,meta3]
+            meta2 = magsys
+            meta3 = 'Galaxies (2d sersic profiles) with non-sidereal tracking. File produced by ramp_simulator.py'
+            meta4 = 'from run using non-sidereal moving target list {}.'.format(self.params['simSignals']['movingTargetToTrack'])
+            galaxies.meta['comments'] = [meta0,meta1,meta2,meta3,meta4]
             galaxies.write(os.path.join(self.params['Output']['directory'],'temp_non_sidereal_sersic_sources.list'),format='ascii',overwrite=True)
             
             #read in the PSF file with centered source
@@ -682,9 +682,10 @@ class Catalog_seed():
             #else:
             #    psfname=basename+self.params['Readout'][usefilt].lower()+"_"+str(wfe)+"_"+str(wfegroup)
 
-            galaxyCRImage = self.makeGalaxyImage('temp_non_sidereal_sersic_sources.list',self.centerpsf)
+            galaxyCRImage, galaxySegmap = self.makeGalaxyImage('temp_non_sidereal_sersic_sources.list',self.centerpsf)
             totalCRList.append(galaxyCRImage)
-
+            totalSegList.append(galaxySegmap)
+            
         if len(extended_rows) > 0:
             extended = targs[extended_rows]
 
@@ -696,9 +697,10 @@ class Catalog_seed():
                 meta1 = 'velocity_pixel'
             else:
                 meta1 = ''
-            meta2 = 'Extended sources with non-sidereal tracking. File produced by ramp_simulator.py'
-            meta3 = 'from run using non-sidereal moving target list {}.'.format(self.params['simSignals']['movingTargetToTrack'])
-            extended.meta['comments'] = [meta0,meta1,meta2,meta3]
+            meta2 = magsys
+            meta3 = 'Extended sources with non-sidereal tracking. File produced by ramp_simulator.py'
+            meta4 = 'from run using non-sidereal moving target list {}.'.format(self.params['simSignals']['movingTargetToTrack'])
+            extended.meta['comments'] = [meta0,meta1,meta2,meta3,meta4]
             extended.write(os.path.join(self.params['Output']['directory'],'temp_non_sidereal_extended_sources.list'),format='ascii',overwrite=True)
             
             #read in the PSF file with centered source
@@ -713,26 +715,29 @@ class Catalog_seed():
             extlist,extstamps = self.getExtendedSourceList('temp_non_sidereal_extended_sources.list')
 
             #translate the extended source list into an image
-            extCRImage = self.makeExtendedSourceImage(extlist,extstamps)
+            extCRImage, extSegmap = self.makeExtendedSourceImage(extlist,extstamps)
 
             #if requested, convolve the stamp images with the NIRCam PSF
             if self.params['simSignals']['PSFConvolveExtended']:
                 extCRImage = s1.fftconvolve(extCRImage,self.centerpsf,mode='same')
 
             totalCRList.append(extCRImage)
-
+            totalSegList.append(extSegmap)
+            
         #Now combine into a final countrate image of non-sidereal sources (that are being tracked)
         if len(totalCRList) > 0:
             totalCRImage = totalCRList[0]
+            totalSegmap = totalSegList[0]
             if len(totalCRList) > 1:
-                for i in xrange(1,len(totalCRList)):
+                for i in range(1,len(totalCRList)):
                     totalCRImage += totalCRList[i]
+                    totalSegmap += totalSegList[i] + i
         else:
             print("No non-sidereal countrate targets produced.")
             print("You shouldn't be here.")
             sys.exit()
 
-        return totalCRImage,track_ra_vel,track_dec_vel,velFlag
+        return totalCRImage,totalSegmap,track_ra_vel,track_dec_vel,velFlag
         
 
             
@@ -1100,7 +1105,7 @@ class Catalog_seed():
                             
 
                 #Get the input magnitude of the point source
-                mag=float(values['magnitude'])
+                mag = float(values['magnitude'])
 
                 if pixely > miny and pixely < maxy and pixelx > minx and pixelx < maxx:
                             
