@@ -1991,7 +1991,7 @@ class Catalog_seed():
                     ra,dec,ra_str,dec_str = self.XYToRADec(pixelx,pixely,attitude_matrix,coord_transform)
                             
 
-                #Get the input magnitude of the point source
+                #Get the input magnitude 
                 try:
                     mag=float(values['magnitude'])
                 except:
