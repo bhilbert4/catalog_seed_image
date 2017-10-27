@@ -16,9 +16,9 @@ class SegMap():
 
     def initialize_map(self):
         if self.zdim is None:
-            self.segmap = np.zeros((self.ydim,self.xdim))
+            self.segmap = np.zeros((self.ydim,self.xdim),dtype=np.int64)
         else:
-            self.segmap = np.zeros((self.zdim,self.ydim,self.xdim))
+            self.segmap = np.zeros((self.zdim,self.ydim,self.xdim),dtype=np.int64)
             
     def add_object_basic(self,ystart,yend,xstart,xend,number):
         # Add an object to the segmentation map
