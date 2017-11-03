@@ -27,7 +27,7 @@ from . import moving_targets
 from . import segmentation_map as segmap
 
 inst_list = ['nircam']
-modes = {'nircam':['imaging','moving_target','wfss','coron']}
+modes = {'nircam':['imaging','moving_target','wfss']}
 inst_abbrev = {'nircam':'NRC'}
 pixelScale = {'nircam':{'sw':0.031,'lw':0.063}}
 full_array_size = {'nircam':2048}
@@ -59,6 +59,10 @@ class Catalog_seed():
         # creating segmentation maps
         self.single_ron = 6. #e-/read
         self.grism_background = 0.25 #e-/sec
+
+        # URL for downloading PSF files if they are not present
+        # locally
+        self.psf_url = "https://www.somewhere.com"
 
         
     def make_seed(self):
@@ -1239,7 +1243,18 @@ class Catalog_seed():
                 #Read in the appropriate PSF file
                 try:
                     psffn = self.psfname+'_'+frag+'.fits'
-                    webbpsfimage = fits.getdata(psffn)
+                    local = os.path.isfile(psffn)
+                    if local:
+                        webbpsfimage = fits.getdata(psffn)
+                    else:
+                        print("Local copy of PSF file {}".format(psffn))
+                        print("not found. Attempting to download.")
+                        psffn = os.path.join(self.psf_url,psffn)
+                        hh = fits.open(psffn,cache=False)
+                        # Save a local copy so that it won't have
+                        # to be downloaded again
+                        hh.writeto(psffn)
+                        webbpsfimage = hh[0].data
                 except:
                     print("ERROR: Could not load PSF file {} from library".format(psffn))
                     sys.exit()
@@ -1893,7 +1908,7 @@ class Catalog_seed():
         #read in the list of point sources to add, and adjust the
         #provided positions for astrometric distortion
 
-        extSourceList = Table(names=('pixelx','pixely','RA','Dec','RA_degrees','Dec_degrees','magnitude','countrate_e/s','counts_per_frame_e'),dtype=('f','f','S14','S14','f','f','f','f','f'))
+        extSourceList = Table(names=('index','pixelx','pixely','RA','Dec','RA_degrees','Dec_degrees','magnitude','countrate_e/s','counts_per_frame_e'),dtype=('i','f','f','S14','S14','f','f','f','f','f'))
 
         try:
             lines,pixelflag,magsys = self.readPointSourceFile(filename)
@@ -1906,7 +1921,8 @@ class Catalog_seed():
             sys.exit()
 
         #File to save adjusted point source locations
-        eslist = open(self.params['Output']['file'][0:-5] + '_extendedsources.list','w')
+        eoutcat = self.params['Output']['file'][0:-5] + '_extendedsources.list'
+        eslist = open(eoutcat,'w')
 
         dtor = math.radians(1.)
         nx = (self.subarray_bounds[2]-self.subarray_bounds[0])+1
@@ -1939,8 +1955,18 @@ class Catalog_seed():
         #Also write out column headers to prepare for source list
         eslist.write("# Field center (degrees): %13.8f %14.8f y axis rotation angle (degrees): %f  image size: %4.4d %4.4d\n" % (self.ra,self.dec,self.params['Telescope']['rotation'],nx,ny))
         eslist.write('#\n')
-        eslist.write("#    RA_(hh:mm:ss)   DEC_(dd:mm:ss)   RA_degrees      DEC_degrees     pixel_x   pixel_y    magnitude   counts/sec    counts/frame\n")
+        eslist.write("#    Index   RA_(hh:mm:ss)   DEC_(dd:mm:ss)   RA_degrees      DEC_degrees     pixel_x   pixel_y    magnitude   counts/sec    counts/frame\n")
 
+        # Add an index column if not present
+        if 'index' in lines.colnames:
+            pass
+            #print('Using point source catalog index numbers')
+            #indexes = lines['index']
+        else:
+            print('No extended object catalog index numbers. Adding to output: {}.'.format(eoutcat))
+            indexes = np.arange(len(lines['filename']))
+            lines['index'] = indexes
+        
         #Loop over input lines in the source list 
         all_stamps = []
         for values in lines:
@@ -2042,7 +2068,7 @@ class Catalog_seed():
                 if pixely > miny and pixely < maxy and pixelx > minx and pixelx < maxx:
                             
                     #set up an entry for the output table
-                    entry = [pixelx,pixely,ra_str,dec_str,ra,dec,mag]
+                    entry = [values['index'],pixelx,pixely,ra_str,dec_str,ra,dec,mag]
 
                     #save the stamp image after normalizing to a total signal of 1.
                     # and convolving with PSF if requested
@@ -2105,7 +2131,7 @@ class Catalog_seed():
                     extSourceList.add_row(entry)
 
                     #write out positions, distances, and counts to the output file
-                    eslist.write("%s %s %14.8f %14.8f %9.3f %9.3f  %9.3f  %13.6e   %13.6e\n" % (ra_str,dec_str,ra,dec,pixelx,pixely,magwrite,countrate,framecounts))
+                    eslist.write("%i %s %s %14.8f %14.8f %9.3f %9.3f  %9.3f  %13.6e   %13.6e\n" % (values['index'],ra_str,dec_str,ra,dec,pixelx,pixely,magwrite,countrate,framecounts))
                 #except:
                 #    print("ERROR: bad point source line %s. Skipping." % (line))
         print("Number of extended sources found within the requested aperture: {}".format(len(extSourceList)))
@@ -2161,6 +2187,8 @@ class Catalog_seed():
             #Assume that the brightest pixel corresponds to the peak of the source
             psfdims = stamp.shape
             nyshift,nxshift = np.array(psfdims) / 2
+            nxshift = np.int(nxshift)
+            nyshift = np.int(nyshift)
             nx = int(xoff)
             ny = int(yoff)
             i1 = max(nx-nxshift,0)
